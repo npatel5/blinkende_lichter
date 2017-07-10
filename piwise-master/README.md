@@ -21,16 +21,6 @@ Keeping this in mind feel free to PR. Thank you!
 
 See dataset examples [here][dataset_example].
 
-### Download
-
-Download [image archive][dataset_download] and extract and do:
-
-```
-mkdir data
-mv VOCdevkit/VOC2012/JPEGImages data/images
-mv VOCdevkit/VOC2012/SegmentationClass data/classes
-rm -rf VOCdevkit
-```
 
 ### Install
 
