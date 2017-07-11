@@ -63,9 +63,14 @@ def train(args, model):
             outputs = model(inputs)
 
             optimizer.zero_grad()
-            loss = criterion(outputs, targets[: , 0])
+            print(targets.size())
+            
+            loss = criterion(outputs, targets)
+            
             loss.backward()
             optimizer.step()
+
+            print(loss)
             epoch_loss.append(loss.data[0])
             if args.steps_plot > 0 and step % args.steps_plot == 0:
                 image = inputs[0].cpu().data
