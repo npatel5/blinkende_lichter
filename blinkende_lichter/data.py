@@ -20,9 +20,9 @@ class Upsample:
         ret = []
         for t, r in zip(tmp, resolutions):
             if len(t.shape) < 3:
-                t = imresize(t, size=px_per_mu/r)
+                t = imresize(t, size=px_per_mu / r, interp='lanczos')
             else:
-                t = np.array([imresize(tt, size=px_per_mu/r) for tt in t])
+                t = np.array([imresize(tt, size=px_per_mu / r, interp='lanczos') for tt in t])
             ret.append(t)
         return keys, ret
 
