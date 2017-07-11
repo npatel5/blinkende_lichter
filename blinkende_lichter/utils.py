@@ -55,3 +55,10 @@ def _pixel_correlation(patch, mean_patch, sqdev_patch, y, x):
     correlations = numerator / np.sqrt(sqdev_patch * sqdev_patch[y, x])
     correlations[y, x] = 0
     return np.sum(correlations) / (correlations.size - 1)
+
+
+def to_mask(coords, dims):
+    mask = np.zeros(dims)
+    mask[list(zip(*coords))] = 1
+    return mask
+

@@ -1,3 +1,4 @@
+import json
 from glob import glob
 from itertools import product
 import numpy as np
@@ -5,7 +6,7 @@ from scipy.misc import imread
 import datajoint as dj
 from scipy.signal import convolve2d
 
-from .utils import compute_correlation_image
+from .utils import compute_correlation_image, to_mask
 
 schema = dj.schema('neurofinder_data', locals())
 
@@ -66,9 +67,65 @@ class AveragingParameters(dj.Lookup):
 
 
 @schema
-class AverageImage(dj.Imported):
+class ScanInfo(dj.Imported):
     definition = """
     -> Files
+    ---
+    width       : smallint  # image with
+    height      : smallint  # image height
+    nframes     : int       # number of frames
+    indicator   : varchar(50)
+    frame_rate  : float     # in Hz
+    region      : varchar(50)
+    lab         : varchar(50)   
+    resolution  : float     # resolution in pixels per micron
+    """
+
+    def _make_tuples(self, key):
+        print('Processing', key, flush=True)
+        path = (Files() & key).fetch1('path')
+        with open(path + 'info.json') as fid:
+            info = json.load(fid)
+        self.insert1(dict(key,
+                          width=info['dimensions'][0],
+                          height=info['dimensions'][1],
+                          nframes=info['dimensions'][2],
+                          indicator=info['indicator'],
+                          frame_rate=info['rate-hz'],
+                          region=info['region'],
+                          lab=info['lab'],
+                          resolution=info['pixels-per-micron'],
+                          ))
+
+
+@schema
+class Segmentation(dj.Imported):
+    definition = """
+    -> ScanInfo
+    ---
+    masks       : longblob  # neurons x width x height array
+    """
+
+    @property
+    def key_source(self):
+        return Files() & dict(type='train')
+
+    def _make_tuples(self, key):
+        print('Populating',key, flush=True)
+        # load the regions (training data only)
+        path = (Files() & key).fetch1('path')
+        with open(path + 'regions/regions.json') as f:
+            regions = json.load(f)
+
+        dims = (ScanInfo() & key).fetch1('width', 'height')
+        key['masks'] = np.array([to_mask(s['coordinates'], dims) for s in regions])
+        self.insert1(key)
+
+
+@schema
+class AverageImage(dj.Imported):
+    definition = """
+    -> ScanInfo
     -> AveragingParameters
     ---
     average_image       : longblob
@@ -79,6 +136,7 @@ class AverageImage(dj.Imported):
         path = (Files() & key).fetch1('path')
         p, normalize = (AveragingParameters() & key).fetch1('p', 'contrast_normalize')
         files = sorted(glob(path + 'images/*.tiff'))
+
         scan = np.array([imread(f) for f in files])
         scan = scan.astype(np.float64, copy=False)
         scan = np.power(scan, p, out=scan)  # in place
@@ -95,10 +153,11 @@ class AverageImage(dj.Imported):
         average_image = (average_image - average_image.min()) / (average_image.max() - average_image.min())
         self.insert1(dict(key, average_image=average_image))
 
+
 @schema
 class CorrelationImage(dj.Imported):
     definition = """
-    -> Files
+    -> ScanInfo
     ---
     correlation_image       : longblob
     """
@@ -109,5 +168,34 @@ class CorrelationImage(dj.Imported):
         files = sorted(glob(path + 'images/*.tiff'))
         scan = np.array([imread(f) for f in files])
         scan = scan.astype(np.float64, copy=False)
-        correlation_image = compute_correlation_image(scan.transpose([2,0,1]))
+        correlation_image = compute_correlation_image(scan.transpose([1, 2, 0]))
         self.insert1(dict(key, correlation_image=correlation_image))
+
+
+@schema
+class SpectralImage(dj.Imported):
+    definition = """
+    -> ScanInfo
+    ---
+    spectral_image       : longblob
+    """
+
+    def _make_tuples(self, key):
+        print('Processing', key, flush=True)
+        path = (Files() & key).fetch1('path')
+        fr, T = (ScanInfo() & key).fetch1('frame_rate', 'nframes')
+
+        files = sorted(glob(path + 'images/*.tiff'))
+        scan = np.array([imread(f) for f in files], dtype=np.float32)
+        F = np.abs(np.fft.fft(scan, axis=0))
+
+        w = np.fft.fftfreq(T, d=1. / fr)
+        ti = np.interp(np.linspace(1e-6, 1., 16), w[1:T // 2], np.arange(1, T // 2)).astype(int)
+
+        spectral_image = []
+        for t1, t2 in zip(ti[:-1], ti[1:]):
+            spectral_image.append(F[t1:t2, ...].sum(axis=0))
+        spectral_image = np.array(spectral_image)
+        spectral_image = spectral_image / spectral_image.sum(axis=0, keepdims=True)
+
+        self.insert1(dict(key, spectral_image=spectral_image))
