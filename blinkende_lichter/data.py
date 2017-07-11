@@ -13,7 +13,7 @@ schema = dj.schema('neurofinder_data', locals())
 
 class Upsample:
     def fetch_upsampled(self, px_per_mu):
-        img_attr = [k for k, v in self.heading.attributes if v.type == 'longblob']
+        img_attr = [k for k, v in self.heading.attributes.items() if v.type == 'longblob']
         assert len(img_attr) == 1, 'Cannot determine name of image attribute'
         img_attr = img_attr[0]
         keys, tmp, resolutions = (self * ScanInfo()).fetch(dj.key, img_attr, 'resolution')
