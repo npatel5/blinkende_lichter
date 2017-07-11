@@ -6,53 +6,46 @@ from argparse import ArgumentParser
 
 from torch.optim import SGD, Adam
 from torch.autograd import Variable
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from torchvision.transforms import Compose, CenterCrop, Normalize
 from torchvision.transforms import ToTensor, ToPILImage
 
-from piwise.dataset import VOC12
-from piwise.network import FCN8, FCN16, FCN32, UNet, PSPNet, SegNet
+
+from piwise.network import UNet
 from piwise.criterion import CrossEntropyLoss2d
 from piwise.transform import Relabel, ToLabel, Colorize
 from piwise.visualize import Dashboard
 
-NUM_CHANNELS = 3
-NUM_CLASSES = 22
+NUM_CHANNELS = 2
+NUM_CLASSES = 2
 
 color_transform = Colorize()
 image_transform = ToPILImage()
 input_transform = Compose([
     CenterCrop(256),
-    ToTensor(),
     Normalize([.485, .456, .406], [.229, .224, .225]),
 ])
 target_transform = Compose([
     CenterCrop(256),
-    ToLabel(),
     Relabel(255, 21),
 ])
 
 def train(args, model):
     model.train()
 
-    weight = torch.ones(22)
+    weight = torch.ones(NUM_CLASSES)
     weight[0] = 0
-
-    loader = DataLoader(VOC12(args.datadir, input_transform, target_transform),
-        num_workers=args.num_workers, batch_size=args.batch_size, shuffle=True)
-
+    in_vals = np.load('data/inputs.npy')
+    out_vals = np.load('data/outputs.npy')
+    
+    loader = DataLoader(TensorDataset(torch.from_numpy(in_vals),torch.from_numpy(out_vals).long()), num_workers=args.num_workers, batch_size=args.batch_size, shuffle=True)
     if args.cuda:
+        
         criterion = CrossEntropyLoss2d(weight.cuda())
     else:
         criterion = CrossEntropyLoss2d(weight)
 
     optimizer = Adam(model.parameters())
-    if args.model.startswith('FCN'):
-        optimizer = SGD(model.parameters(), 1e-4, .9, 2e-5)
-    if args.model.startswith('PSP'):
-        optimizer = SGD(model.parameters(), 1e-2, .9, 1e-4)
-    if args.model.startswith('Seg'):
-        optimizer = SGD(model.parameters(), 1e-3, .9)
 
     if args.steps_plot > 0:
         board = Dashboard(args.port)
@@ -70,10 +63,9 @@ def train(args, model):
             outputs = model(inputs)
 
             optimizer.zero_grad()
-            loss = criterion(outputs, targets[:, 0])
+            loss = criterion(outputs, targets[: , 0])
             loss.backward()
             optimizer.step()
-
             epoch_loss.append(loss.data[0])
             if args.steps_plot > 0 and step % args.steps_plot == 0:
                 image = inputs[0].cpu().data
@@ -104,21 +96,7 @@ def evaluate(args, model):
     image_transform(label).save(args.label)
 
 def main(args):
-    Net = None
-    if args.model == 'fcn8':
-        Net = FCN8
-    if args.model == 'fcn16':
-        Net = FCN16
-    if args.model == 'fcn32':
-        Net = FCN32
-    if args.model == 'fcn32':
-        Net = FCN32
-    if args.model == 'unet':
-        Net = UNet
-    if args.model == 'pspnet':
-        Net = PSPNet
-    if args.model == 'segnet':
-        Net = SegNet
+    Net = UNet
     assert Net is not None, f'model {args.model} not available'
 
     model = Net(NUM_CLASSES)
@@ -140,7 +118,6 @@ def main(args):
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--cuda', action='store_true')
-    parser.add_argument('--model', required=True)
     parser.add_argument('--state')
 
     subparsers = parser.add_subparsers(dest='mode')
@@ -152,7 +129,6 @@ if __name__ == '__main__':
 
     parser_train = subparsers.add_parser('train')
     parser_train.add_argument('--port', type=int, default=80)
-    parser_train.add_argument('--datadir', required=True)
     parser_train.add_argument('--num-epochs', type=int, default=32)
     parser_train.add_argument('--num-workers', type=int, default=4)
     parser_train.add_argument('--batch-size', type=int, default=1)

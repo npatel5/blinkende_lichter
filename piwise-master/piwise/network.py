@@ -154,8 +154,8 @@ class UNetDec(nn.Module):
 class UNet(nn.Module):
 
     def __init__(self, num_classes):
-
         super().__init__()
+
         self.dec1 = UNetDec(2, 64)
         self.dec2 = UNetDec(64, 128, dropout=True)
         self.center = nn.Sequential(
@@ -167,7 +167,6 @@ class UNet(nn.Module):
             nn.ConvTranspose2d(256, 128, 2, stride=2),
             nn.ReLU(inplace=True),
         )
-
         #self.enc4 = UNetEnc(1024, 512, 256)
         #self.enc3 = UNetEnc(512, 256, 128)
         self.enc2 = UNetEnc(256, 128, 64)
@@ -194,7 +193,7 @@ class UNet(nn.Module):
         enc1 = self.enc1(torch.cat([
             enc2, F.upsample_bilinear(dec1, enc2.size()[2:])], 1))
 
-	return F.upsample_bilinear(self.final(enc1), x.size()[2:])
+        return F.log_softmax(F.upsample_bilinear(self.final(enc1), x.size()[2:]))
 
 
 class SegNetEnc(nn.Module):
