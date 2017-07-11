@@ -2,13 +2,29 @@ import json
 from glob import glob
 from itertools import product
 import numpy as np
-from scipy.misc import imread
+from scipy.misc import imread, imresize
 import datajoint as dj
 from scipy.signal import convolve2d
 
 from .utils import compute_correlation_image, to_mask
 
 schema = dj.schema('neurofinder_data', locals())
+
+
+class Upsample:
+    def fetch_upsampled(self, px_per_mu):
+        img_attr = [k for k, v in self.heading.attributes if v.type == 'longblob']
+        assert len(img_attr) == 1, 'Cannot determine name of image attribute'
+        img_attr = img_attr[0]
+        keys, tmp, resolutions = (self * ScanInfo()).fetch(dj.key, img_attr, 'resolution')
+        ret = []
+        for t, r in zip(tmp, resolutions):
+            if len(t.shape) < 3:
+                t = imresize(t, size=px_per_mu/r)
+            else:
+                t = np.array([imresize(tt, size=px_per_mu/r) for tt in t])
+            ret.append(t)
+        return keys, ret
 
 
 @schema
@@ -99,7 +115,7 @@ class ScanInfo(dj.Imported):
 
 
 @schema
-class Segmentation(dj.Imported):
+class Segmentation(dj.Imported, Upsample):
     definition = """
     -> ScanInfo
     ---
@@ -111,7 +127,7 @@ class Segmentation(dj.Imported):
         return Files() & dict(type='train')
 
     def _make_tuples(self, key):
-        print('Populating',key, flush=True)
+        print('Populating', key, flush=True)
         # load the regions (training data only)
         path = (Files() & key).fetch1('path')
         with open(path + 'regions/regions.json') as f:
@@ -123,7 +139,7 @@ class Segmentation(dj.Imported):
 
 
 @schema
-class AverageImage(dj.Imported):
+class AverageImage(dj.Imported, Upsample):
     definition = """
     -> ScanInfo
     -> AveragingParameters
@@ -155,7 +171,7 @@ class AverageImage(dj.Imported):
 
 
 @schema
-class CorrelationImage(dj.Imported):
+class CorrelationImage(dj.Imported, Upsample):
     definition = """
     -> ScanInfo
     ---
@@ -173,7 +189,7 @@ class CorrelationImage(dj.Imported):
 
 
 @schema
-class SpectralImage(dj.Imported):
+class SpectralImage(dj.Imported, Upsample):
     definition = """
     -> ScanInfo
     ---
