@@ -28,10 +28,22 @@ class Upsample:
 
 
 @schema
+class SampleType(dj.Lookup):
+    definition = """
+    type        : char(12)
+    ---
+    """
+
+    @property
+    def contents(self):
+        yield from zip(['train', 'test', 'validation'])
+
+
+@schema
 class Files(dj.Lookup):
     definition = """
     data_id     : char(5)  # neurofinder id
-    type        : enum('train', 'test')
+    -> SampleType    
     ---
     path        : varchar(255)
     """
@@ -50,20 +62,20 @@ class Files(dj.Lookup):
         ('00.08', 'train', '/data/neurofinder.00.08/'),
         ('00.09', 'train', '/data/neurofinder.00.09/'),
         ('00.10', 'train', '/data/neurofinder.00.10/'),
-        ('00.11', 'train', '/data/neurofinder.00.11/'),
+        ('00.11', 'validation', '/data/neurofinder.00.11/'),
         ('01.00', 'train', '/data/neurofinder.01.00/'),
         ('01.00', 'test', '/data/neurofinder.01.00.test/'),
-        ('01.01', 'train', '/data/neurofinder.01.01/'),
+        ('01.01', 'validation', '/data/neurofinder.01.01/'),
         ('01.01', 'test', '/data/neurofinder.01.01.test/'),
         ('02.00', 'train', '/data/neurofinder.02.00/'),
         ('02.00', 'test', '/data/neurofinder.02.00.test/'),
-        ('02.01', 'train', '/data/neurofinder.02.01/'),
+        ('02.01', 'validation', '/data/neurofinder.02.01/'),
         ('02.01', 'test', '/data/neurofinder.02.01.test/'),
         ('03.00', 'train', '/data/neurofinder.03.00/'),
         ('03.00', 'test', '/data/neurofinder.03.00.test/'),
         ('04.00', 'train', '/data/neurofinder.04.00/'),
         ('04.00', 'test', '/data/neurofinder.04.00.test/'),
-        ('04.01', 'train', '/data/neurofinder.04.01/'),
+        ('04.01', 'validation', '/data/neurofinder.04.01/'),
         ('04.01', 'test', '/data/neurofinder.04.01.test/'),
     ]
 
@@ -147,6 +159,10 @@ class AverageImage(dj.Imported, Upsample):
     average_image       : longblob
     """
 
+    @property
+    def key_source(self):
+        return ScanInfo() * AveragingParameters() & dict(contrast_normalize=1)
+
     def _make_tuples(self, key):
         print('Processing', key, flush=True)
         path = (Files() & key).fetch1('path')
@@ -215,3 +231,49 @@ class SpectralImage(dj.Imported, Upsample):
         spectral_image = spectral_image / spectral_image.sum(axis=0, keepdims=True)
 
         self.insert1(dict(key, spectral_image=spectral_image))
+
+
+@schema
+class UpsampleResolution(dj.Lookup):
+    definition = """
+    # target image resolutions
+
+    up_resolution       : double # target resolution
+    ---
+    """
+
+    contents = [(1.15,)]
+
+
+@schema
+class AvgCorrDataset(dj.Manual):
+    definition = """
+    # dataset consisting of average images and correlation images
+
+    dataset_id         : tinyint   # index of dataset
+    ---
+    -> UpsampleResolution
+    """
+
+    def make_datasets(self):
+        k = dict(dataset_id=0, up_resolution=1.15)
+        self.insert1(k)
+        keys = [dict(k, **key) for
+                key in
+                (AverageImage() * CorrelationImage() & dict(avg_id=0) & 'type in ("train","validation")').fetch.keys()]
+        self.AvgImage().insert(keys, ignore_extra_fields=True)
+        self.CorrImage().insert(keys, ignore_extra_fields=True)
+
+    class AvgImage(dj.Part):
+        definition = """
+        -> master
+        -> AverageImage
+        ---
+        """
+
+    class CorrImage(dj.Part):
+        definition = """
+        -> master
+        -> CorrelationImage
+        ---
+        """
