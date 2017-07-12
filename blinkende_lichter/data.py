@@ -13,6 +13,13 @@ from .utils import compute_correlation_image, to_mask
 schema = dj.schema('neurofinder_data', locals())
 
 
+def upsample(img, fro, to):
+    if len(img.shape) == 2:
+        return imresize(img, size=to / fro, interp='lanczos')
+    elif len(img.shape) > 2:
+        return np.array([upsample(t, fro, to) for t in img])
+
+
 class Upsample:
     def fetch_upsampled(self, px_per_mu):
         img_attr = [k for k, v in self.heading.attributes.items() if v.type == 'longblob']
@@ -267,23 +274,17 @@ class AvgCorrDataset(dj.Manual):
         input, output = [], []
         for a, c, m, fro, to in zip(avg, corr, mask, res, up):
             tmp = np.stack([a[None, ...], c[None, ...]], axis=1)
-            tmp = self.upsample(tmp, fro, to)
+            tmp = upsample(tmp, fro, to)
             input.append(tmp)
-            output.append(self.upsample(m.sum(axis=0, keepdims=True), fro, to).astype(int))
+            output.append(upsample(m.sum(axis=0, keepdims=True), fro, to).astype(int))
 
-        return ListDataset(input, output)
+        # return ListDataset(input, output)
         #------ TODO remove when done -----------
         from IPython import embed
         embed()
         exit()
         #----------------------------------------
 
-    @staticmethod
-    def upsample(img, fro, to):
-        if len(img.shape) ==  2:
-            return imresize(img, size=to / fro, interp='lanczos')
-        elif len(img.shape) >  2:
-            return np.array([self.upsample(t, fro, to) for t in img])
 
     def make_datasets(self):
         k = dict(dataset_id=0, up_resolution=1.15)
