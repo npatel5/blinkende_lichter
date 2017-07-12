@@ -11,7 +11,7 @@ class CrossEntropyLoss2d(nn.Module):
 
     def forward(self, outputs, targets):
         log = F.log_softmax(outputs)
-        from IPython import embed
-        embed()
-        exit()
+        #from IPython import embed
+        #embed()
+        #exit()
         return self.loss(log, targets)

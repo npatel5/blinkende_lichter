@@ -30,9 +30,11 @@ target_transform = Compose([
     Relabel(255, 21),
 ])
 
+
+        
+
 def train(args, model):
     model.train()
-
     weight = torch.ones(NUM_CLASSES)
     weight[0] = 0
     in_vals = np.load('data/inputs.npy')
@@ -41,9 +43,9 @@ def train(args, model):
     loader = DataLoader(TensorDataset(torch.from_numpy(in_vals),torch.from_numpy(out_vals).long()), num_workers=args.num_workers, batch_size=args.batch_size, shuffle=True)
     if args.cuda:
         
-        criterion = CrossEntropyLoss2d(weight.cuda())
+        criterion = CrossEntropyLoss2d()
     else:
-        criterion = CrossEntropyLoss2d(weight)
+        criterion = CrossEntropyLoss2d()
 
     optimizer = Adam(model.parameters())
 
@@ -60,9 +62,9 @@ def train(args, model):
 
             inputs = Variable(images)
             targets = Variable(labels)
+            optimizer.zero_grad()
             outputs = model(inputs)
 
-            optimizer.zero_grad()
             print(targets.size())
             
             loss = criterion(outputs, targets)
@@ -70,7 +72,7 @@ def train(args, model):
             loss.backward()
             optimizer.step()
 
-            print(loss)
+            
             epoch_loss.append(loss.data[0])
             if args.steps_plot > 0 and step % args.steps_plot == 0:
                 image = inputs[0].cpu().data

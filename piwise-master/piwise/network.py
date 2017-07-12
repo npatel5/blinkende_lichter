@@ -177,6 +177,7 @@ class UNet(nn.Module):
             nn.ReLU(inplace=True),
         )
         self.final = nn.Conv2d(64, num_classes, 1)
+    
 
     def forward(self, x):
         dec1 = self.dec1(x)
