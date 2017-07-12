@@ -263,12 +263,25 @@ class AvgCorrDataset(dj.Manual):
               * ScanInfo() & key
         avg, corr, mask, ttype, res, up = rel.fetch('average_image', 'correlation_image',
                                                     'masks', 'type','resolution', 'up_resolution')
-        input = [np.stack([a[None, ...], b[None,...]], axis=1) for a, b in zip(avg, corr)]
+        input, output = [], []
+        for a, c, m, fro, to in zip(avg, corr, mask, res, up):
+            tmp = np.stack([a[None, ...], c[None, ...]], axis=1)
+            tmp = self.upsample(tmp, fro, to)
+            input.append(tmp)
+            output.append(self.upsample(m.sum(axis=0, keepdims=True), fro, to).astype(int))
+
         #------ TODO remove when done -----------
         from IPython import embed
         embed()
         exit()
         #----------------------------------------
+
+    @staticmethod
+    def upsample(self, img, fro, to):
+        if len(img.shape) ==  2:
+            return imresize(img, size=to / fro, interp='lanczos')
+        elif len(img.shape) >  2:
+            return np.array([self.upsample(t, fro, to) for t in img])
 
     def make_datasets(self):
         k = dict(dataset_id=0, up_resolution=1.15)
