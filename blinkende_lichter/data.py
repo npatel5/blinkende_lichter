@@ -5,6 +5,7 @@ import numpy as np
 from scipy.misc import imread, imresize
 import datajoint as dj
 from scipy.signal import convolve2d
+from torch.utils.data import Dataset
 
 from .utils import compute_correlation_image, to_mask
 
@@ -254,6 +255,17 @@ class AvgCorrDataset(dj.Manual):
     ---
     -> UpsampleResolution
     """
+
+    def get_data(self, key):
+        assert len(self & key) == 1, 'Can only return a new dataset for one key'
+        rel = self.AvgImage() * self.CorrImage() * AverageImage() * CorrelationImage() * Segmentation() & key
+        avg, corr, mask, ttype = rel.fetch('average_image', 'correlation_image', 'masks', 'type')
+        input = [np.stack([a[None, ...], b[None,...]], axis=1) for a, b in zip(avg, corr)]
+        #------ TODO remove when done -----------
+        from IPython import embed
+        embed()
+        exit()
+        #----------------------------------------
 
     def make_datasets(self):
         k = dict(dataset_id=0, up_resolution=1.15)
