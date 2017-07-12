@@ -264,25 +264,30 @@ class AvgCorrDataset(dj.Manual):
     -> UpsampleResolution
     """
 
-    def get_data(self, key):
+    def get_data(self, key, standardize_input=False, transform=None):
         assert len(self & key) == 1, 'Can only return a new dataset for one key'
         rel = self * self.AvgImage() * self.CorrImage() \
               * AverageImage() * CorrelationImage() * Segmentation() \
               * ScanInfo() & key
         avg, corr, mask, ttype, res, up = rel.fetch('average_image', 'correlation_image',
                                                     'masks', 'type', 'resolution', 'up_resolution')
-        input, output = [], []
+        inputs, output = [], []
         for a, c, m, fro, to in zip(avg, corr, mask, res, up):
-            tmp = np.stack([a[None, ...], c[None, ...]], axis=1)
+            tmp = np.stack([a, c], axis=0)
             tmp = upsample(tmp, fro, to)
-            input.append(tmp)
-            output.append(upsample(m.sum(axis=0, keepdims=True), fro, to).astype(int))
+            inputs.append(tmp)
+            output.append(upsample(m.sum(axis=0), fro, to).astype(int))
 
-        return ListDataset([inp for inp, t in zip(input, ttype) if t == 'train'],
-                           [outp for outp, t in zip(output, ttype) if t == 'train']), \
-               ListDataset([inp for inp, t in zip(input, ttype) if t == 'validation'],
-                           [outp for outp, t in zip(output, ttype) if t == 'validation'])
+        if standardize_input:
+            print('Standardizing inputs', flush=True)
+            inputs = [
+                (inp - inp.mean(axis=(-1, -2), keepdims=True)) / (inp.std(axis=(-1, -2), keepdims=True, ddof=1) + 1e-8)
+                for inp in inputs]
 
+        return ListDataset([inp for inp, t in zip(inputs, ttype) if t == 'train'],
+                           [outp for outp, t in zip(output, ttype) if t == 'train'], transform=transform), \
+               ListDataset([inp for inp, t in zip(inputs, ttype) if t == 'validation'],
+                           [outp for outp, t in zip(output, ttype) if t == 'validation'], transform=transform)
 
     def make_datasets(self):
         k = dict(dataset_id=0, up_resolution=1.15)
