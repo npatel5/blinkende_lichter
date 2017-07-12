@@ -145,7 +145,7 @@ class Segmentation(dj.Imported, Upsample):
 
     @property
     def key_source(self):
-        return Files() & dict(type='train')
+        return Files() & "type in ('train','validation')"
 
     def _make_tuples(self, key):
         print('Populating', key, flush=True)
@@ -266,11 +266,11 @@ class AvgCorrDataset(dj.Manual):
 
     def get_data(self, key):
         assert len(self & key) == 1, 'Can only return a new dataset for one key'
-        rel = self * self.AvgImage() * self.CorrImage()\
+        rel = self * self.AvgImage() * self.CorrImage() \
               * AverageImage() * CorrelationImage() * Segmentation() \
               * ScanInfo() & key
         avg, corr, mask, ttype, res, up = rel.fetch('average_image', 'correlation_image',
-                                                    'masks', 'type','resolution', 'up_resolution')
+                                                    'masks', 'type', 'resolution', 'up_resolution')
         input, output = [], []
         for a, c, m, fro, to in zip(avg, corr, mask, res, up):
             tmp = np.stack([a[None, ...], c[None, ...]], axis=1)
@@ -278,12 +278,10 @@ class AvgCorrDataset(dj.Manual):
             input.append(tmp)
             output.append(upsample(m.sum(axis=0, keepdims=True), fro, to).astype(int))
 
-        # return ListDataset(input, output)
-        #------ TODO remove when done -----------
-        from IPython import embed
-        embed()
-        exit()
-        #----------------------------------------
+        return ListDataset([inp for inp, t in zip(input, ttype) if t == 'train'],
+                           [outp for outp, t in zip(output, ttype) if t == 'train']), \
+               ListDataset([inp for inp, t in zip(input, ttype) if t == 'validation'],
+                           [outp for outp, t in zip(output, ttype) if t == 'validation'])
 
 
     def make_datasets(self):
