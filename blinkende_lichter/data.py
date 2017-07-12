@@ -7,6 +7,7 @@ import datajoint as dj
 from scipy.signal import convolve2d
 from torch.utils.data import Dataset
 
+from attorch.dataset import ListDataset
 from .utils import compute_correlation_image, to_mask
 
 schema = dj.schema('neurofinder_data', locals())
@@ -270,6 +271,7 @@ class AvgCorrDataset(dj.Manual):
             input.append(tmp)
             output.append(self.upsample(m.sum(axis=0, keepdims=True), fro, to).astype(int))
 
+        return ListDataset(input, output)
         #------ TODO remove when done -----------
         from IPython import embed
         embed()
@@ -277,7 +279,7 @@ class AvgCorrDataset(dj.Manual):
         #----------------------------------------
 
     @staticmethod
-    def upsample(self, img, fro, to):
+    def upsample(img, fro, to):
         if len(img.shape) ==  2:
             return imresize(img, size=to / fro, interp='lanczos')
         elif len(img.shape) >  2:
