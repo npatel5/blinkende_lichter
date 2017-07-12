@@ -258,7 +258,7 @@ class AvgCorrDataset(dj.Manual):
 
     def get_data(self, key):
         assert len(self & key) == 1, 'Can only return a new dataset for one key'
-        rel = self.AvgImage() * self.CorrImage()\
+        rel = self * self.AvgImage() * self.CorrImage()\
               * AverageImage() * CorrelationImage() * Segmentation() \
               * ScanInfo() & key
         avg, corr, mask, ttype, res, up = rel.fetch('average_image', 'correlation_image',
