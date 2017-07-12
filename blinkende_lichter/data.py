@@ -258,8 +258,11 @@ class AvgCorrDataset(dj.Manual):
 
     def get_data(self, key):
         assert len(self & key) == 1, 'Can only return a new dataset for one key'
-        rel = self.AvgImage() * self.CorrImage() * AverageImage() * CorrelationImage() * Segmentation() & key
-        avg, corr, mask, ttype = rel.fetch('average_image', 'correlation_image', 'masks', 'type')
+        rel = self.AvgImage() * self.CorrImage()\
+              * AverageImage() * CorrelationImage() * Segmentation() \
+              * ScanInfo() & key
+        avg, corr, mask, ttype, res, up = rel.fetch('average_image', 'correlation_image',
+                                                    'masks', 'type','resolution', 'up_resolution')
         input = [np.stack([a[None, ...], b[None,...]], axis=1) for a, b in zip(avg, corr)]
         #------ TODO remove when done -----------
         from IPython import embed
