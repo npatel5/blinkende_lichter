@@ -4,6 +4,7 @@ from itertools import product
 import numpy as np
 from scipy.misc import imread, imresize
 import datajoint as dj
+from scipy.ndimage import binary_erosion
 from scipy.signal import convolve2d
 from torch.utils.data import Dataset
 
@@ -15,25 +16,27 @@ schema = dj.schema('neurofinder_data', locals())
 
 def upsample(img, fro, to):
     if len(img.shape) == 2:
-        return imresize(img, size=to / fro, interp='lanczos')
+        mi, ma = img.min(), img.max()
+        tmp = imresize(img, size=to / fro, interp='lanczos').astype(np.float64)
+        return (tmp - tmp.min()) / (tmp.max() - tmp.min()) * (ma - mi) + mi
     elif len(img.shape) > 2:
         return np.array([upsample(t, fro, to) for t in img])
 
 
-class Upsample:
-    def fetch_upsampled(self, px_per_mu):
-        img_attr = [k for k, v in self.heading.attributes.items() if v.type == 'longblob']
-        assert len(img_attr) == 1, 'Cannot determine name of image attribute'
-        img_attr = img_attr[0]
-        keys, tmp, resolutions = (self * ScanInfo()).fetch(dj.key, img_attr, 'resolution')
-        ret = []
-        for t, r in zip(tmp, resolutions):
-            if len(t.shape) < 3:
-                t = imresize(t, size=px_per_mu / r, interp='lanczos')
-            else:
-                t = np.array([imresize(tt, size=px_per_mu / r, interp='lanczos') for tt in t])
-            ret.append(t)
-        return keys, ret
+# class Upsample:
+#     def fetch_upsampled(self, px_per_mu, erode=None):
+#         img_attr = [k for k, v in self.heading.attributes.items() if v.type == 'longblob']
+#         assert len(img_attr) == 1, 'Cannot determine name of image attribute'
+#         img_attr = img_attr[0]
+#         keys, tmp, resolutions = (self * ScanInfo()).fetch(dj.key, img_attr, 'resolution')
+#         ret = []
+#         for t, r in zip(tmp, resolutions):
+#             if len(t.shape) < 3:
+#                 t = imresize(t, size=px_per_mu / r, interp='lanczos')
+#             else:
+#                 t = np.array([imresize(tt, size=px_per_mu / r, interp='lanczos') for tt in t])
+#             ret.append(t)
+#         return keys, ret
 
 
 @schema
@@ -124,8 +127,8 @@ class ScanInfo(dj.Imported):
         with open(path + 'info.json') as fid:
             info = json.load(fid)
         self.insert1(dict(key,
-                          width=info['dimensions'][0],
-                          height=info['dimensions'][1],
+                          width=info['dimensions'][1],
+                          height=info['dimensions'][0],
                           nframes=info['dimensions'][2],
                           indicator=info['indicator'],
                           frame_rate=info['rate-hz'],
@@ -136,7 +139,7 @@ class ScanInfo(dj.Imported):
 
 
 @schema
-class Segmentation(dj.Imported, Upsample):
+class Segmentation(dj.Imported):
     definition = """
     -> ScanInfo
     ---
@@ -154,13 +157,13 @@ class Segmentation(dj.Imported, Upsample):
         with open(path + 'regions/regions.json') as f:
             regions = json.load(f)
 
-        dims = (ScanInfo() & key).fetch1('width', 'height')
+        dims = (ScanInfo() & key).fetch1('height', 'width')
         key['masks'] = np.array([to_mask(s['coordinates'], dims) for s in regions])
         self.insert1(key)
 
 
 @schema
-class AverageImage(dj.Imported, Upsample):
+class AverageImage(dj.Imported):
     definition = """
     -> ScanInfo
     -> AveragingParameters
@@ -196,7 +199,7 @@ class AverageImage(dj.Imported, Upsample):
 
 
 @schema
-class CorrelationImage(dj.Imported, Upsample):
+class CorrelationImage(dj.Imported):
     definition = """
     -> ScanInfo
     ---
@@ -214,7 +217,7 @@ class CorrelationImage(dj.Imported, Upsample):
 
 
 @schema
-class SpectralImage(dj.Imported, Upsample):
+class SpectralImage(dj.Imported):
     definition = """
     -> ScanInfo
     ---
@@ -227,7 +230,7 @@ class SpectralImage(dj.Imported, Upsample):
         fr, T = (ScanInfo() & key).fetch1('frame_rate', 'nframes')
 
         files = sorted(glob(path + 'images/*.tiff'))
-        scan = np.array([imread(f) for f in files], dtype=np.float32)
+        scan = np.array([imread(f) for f in files], dtype=np.float64)
         F = np.abs(np.fft.fft(scan, axis=0))
 
         w = np.fft.fftfreq(T, d=1. / fr)
@@ -264,7 +267,7 @@ class AvgCorrDataset(dj.Manual):
     -> UpsampleResolution
     """
 
-    def get_data(self, key, standardize_input=False, transform=None):
+    def get_data(self, key, standardize_input=False, transform=None, erode=None, overlap=1):
         assert len(self & key) == 1, 'Can only return a new dataset for one key'
         rel = self * self.AvgImage() * self.CorrImage() \
               * AverageImage() * CorrelationImage() * Segmentation() \
@@ -276,7 +279,12 @@ class AvgCorrDataset(dj.Manual):
             tmp = np.stack([a, c], axis=0)
             tmp = upsample(tmp, fro, to)
             inputs.append(tmp)
-            output.append(upsample(m.sum(axis=0), fro, to).astype(int))
+
+            if erode is not None:
+                m = np.stack([binary_erosion(a.astype(int), structure=np.ones((erode, erode))).astype(int) for a in m], axis=0)
+            m = m.sum(axis=0)
+            m[m > 1] = overlap
+            output.append(upsample(m, fro, to).astype(int))
 
         if standardize_input:
             print('Standardizing inputs', flush=True)

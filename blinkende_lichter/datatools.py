@@ -52,3 +52,4 @@ class TypeConversion:
 
     def __call__(self, x):
         return tuple(e.astype(dtype) for e, dtype in zip(x, self.dtypes))
+
