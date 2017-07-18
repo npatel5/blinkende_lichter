@@ -284,7 +284,7 @@ class AvgCorrDataset(dj.Manual):
                 m = np.stack([binary_erosion(a.astype(int), structure=np.ones((erode, erode))).astype(int) for a in m], axis=0)
             m = m.sum(axis=0)
             m[m > 1] = overlap
-            output.append(upsample(m, fro, to).astype(int))
+            output.append(np.round(upsample(m, fro, to)).astype(int))
 
         if standardize_input:
             print('Standardizing inputs', flush=True)
