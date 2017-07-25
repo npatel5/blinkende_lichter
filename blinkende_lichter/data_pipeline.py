@@ -107,13 +107,13 @@ class Scan(dj.Computed):
         # Compute average image
         print('Creating average image...')
         avg_image = (reso.SummaryImages.Average() & key).fetch1('average_image')
-        upsampled_avg = misc.imresize(avg_image, (out_height, out_width), interp='lanczos')
+        upsampled_avg = misc.imresize(avg_image, (out_height, out_width), interp='lanczos', mode='F')
         self.AverageImage().insert1({'example_id':tuple_['example_id'], 'average_image': upsampled_avg})
 
         # Compute correlation image
         print('Creating correlation image...')
         corr_image = (reso.SummaryImages.Correlation() & key).fetch1('correlation_image')
-        upsampled_corr = misc.imresize(corr_image, (out_height, out_width), interp='lanczos')
+        upsampled_corr = misc.imresize(corr_image, (out_height, out_width), interp='lanczos', mode='F')
         self.CorrelationImage().insert1({'example_id':tuple_['example_id'], 'correlation_image': upsampled_corr})
 
         # Get a sample from the middle of the scan
@@ -125,7 +125,7 @@ class Scan(dj.Computed):
         self.Sample().insert1({'example_id': tuple_['example_id'], 'filename': sample_filename})
 
         # Compute kurtosis image
-        print('Creating the kurtosis image')
+        print('Creating kurtosis image')
         kurtosis_image = stats.kurtosis(sample, axis=-1)
         self.KurtosisImage().insert1({'example_id': tuple_['example_id'], 'kurtosis_image': kurtosis_image})
 
@@ -151,7 +151,7 @@ class Scan(dj.Computed):
 
             weighted_masks = np.empty([num_masks, out_height, out_width])
             for i in range(num_masks):
-                weighted_masks[i] = misc.imresize(masks[:, :, i], (out_height, out_width), interp='lanczos')
+                weighted_masks[i] = misc.imresize(masks[:, :, i], (out_height, out_width), interp='lanczos', mode='F')
             self.WeightedSegmentation().insert1({'example_id': tuple_['example_id'], 'type': mask_type,
                                                  'weighted_images': weighted_masks})
 
@@ -201,9 +201,9 @@ def _get_scan_sample(key, sample_length=15, sample_size=(-1, -1), sample_fps=5):
     corrected_sample = correct_motion(correct_raster(sample), frames)
 
     # Resize
-    resized_sample = np.empty([*sample_size, num_frames])
+    resized_sample = np.empty([*sample_size, num_frames], dtype=np.float32)
     for i in range(num_frames):
-        resized_sample[:, :, i] = misc.imresize(corrected_sample[:, :, i], sample_size, interp='lanczos')
+        resized_sample[:, :, i] = misc.imresize(corrected_sample[:, :, i], sample_size, interp='lanczos', mode='F')
     resized_sample=corrected_sample
 
     # Interpolate to desired frame rate (if memory is a constrain, run per pixel)
