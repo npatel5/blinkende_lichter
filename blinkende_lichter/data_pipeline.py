@@ -65,15 +65,15 @@ class Scan(dj.Computed):
         """
 
     # LABELS
-    class WeightedSegmentation(dj.Part):
+    class Masks(dj.Part):
         definition = """ # Weighted masks per type
         -> master
         -> shared.MaskType
         ---
-        weighted_images              : longblob           # masks x height x width
+        masks                       : longblob           # masks x height x width
         """
 
-    class Segmentation(dj.Part):
+    class Segmentations(dj.Part):
         definition = """ # Segmentations per type. Binarized masks
         -> master
         -> shared.MaskType
@@ -107,14 +107,14 @@ class Scan(dj.Computed):
         # Compute average image
         print('Creating average image...')
         avg_image = (reso.SummaryImages.Average() & key).fetch1('average_image')
-        upsampled_avg = misc.imresize(avg_image, (out_height, out_width), interp='lanczos', mode='F')
-        self.AverageImage().insert1({'example_id':tuple_['example_id'], 'average_image': upsampled_avg})
+        resized_avg = misc.imresize(avg_image, (out_height, out_width), interp='lanczos', mode='F')
+        self.AverageImage().insert1({'example_id':tuple_['example_id'], 'average_image': resized_avg})
 
         # Compute correlation image
         print('Creating correlation image...')
         corr_image = (reso.SummaryImages.Correlation() & key).fetch1('correlation_image')
-        upsampled_corr = misc.imresize(corr_image, (out_height, out_width), interp='lanczos', mode='F')
-        self.CorrelationImage().insert1({'example_id':tuple_['example_id'], 'correlation_image': upsampled_corr})
+        resized_corr = misc.imresize(corr_image, (out_height, out_width), interp='lanczos', mode='F')
+        self.CorrelationImage().insert1({'example_id':tuple_['example_id'], 'correlation_image': resized_corr})
 
         # Get a sample from the middle of the scan
         print('Creating the scan sample...')
@@ -143,26 +143,27 @@ class Scan(dj.Computed):
         for mask_type in mask_types:
             print('Creating segmentation and bboxes for', mask_type)
 
-            # Get weighted masks
+            # Fetch masks
             mask_rel = reso.Segmentation.Mask() & key & (reso.MaskClassification.Type() & {'type': mask_type})
             mask_pixels, mask_weights = mask_rel.fetch('pixels', 'weights', order_by='mask_id')
+            mask_weights = [w - w.min() for w in mask_weights] # make all weights nonnegative
             masks = reso.Segmentation.reshape_masks(mask_pixels, mask_weights, image_height, image_width)
             num_masks = masks.shape[-1]
 
-            weighted_masks = np.empty([num_masks, out_height, out_width])
+            # Insert masks
+            resized_masks = np.empty([num_masks, out_height, out_width])
             for i in range(num_masks):
-                weighted_masks[i] = misc.imresize(masks[:, :, i], (out_height, out_width), interp='lanczos', mode='F')
-            self.WeightedSegmentation().insert1({'example_id': tuple_['example_id'], 'type': mask_type,
-                                                 'weighted_images': weighted_masks})
+                resized_masks[i] = misc.imresize(masks[:, :, i], (out_height, out_width), interp='lanczos', mode='F')
+            self.Masks().insert1({'example_id': tuple_['example_id'], 'type': mask_type, 'masks': resized_masks})
 
-            # Get segmentations
+            # Insert segmentations
             segmentations = np.empty([num_masks, out_height, out_width], dtype=np.bool)
             for i in range(num_masks):
-                segmentations[i] = _binarize_mask(weighted_masks[i])
-            self.Segmentation().insert1({'example_id': tuple_['example_id'], 'type': mask_type,
+                segmentations[i] = _binarize_mask(resized_masks[i])
+            self.Segmentations().insert1({'example_id': tuple_['example_id'], 'type': mask_type,
                                          'segmentations': segmentations})
 
-            # Get bounding boxes
+            # Insert bounding boxes
             bboxes = np.empty([num_masks, 4])
             for i in range(num_masks):
                 bboxes[i] = _get_bbox(segmentations[i])
@@ -214,9 +215,8 @@ def _get_scan_sample(key, sample_length=15, sample_size=(-1, -1), sample_fps=5):
     return output_sample
 
 
-def _binarize_mask(mask, threshold=0.995):
+def _binarize_mask(mask, threshold=0.97):
     """ Based on caiman's plot_contours function."""
-    mask = mask - mask.min()
     indices = np.unravel_index(np.flip(np.argsort(mask, axis=None), axis=0), mask.shape) # max to min value in mask
     cumulative_mass = np.cumsum(mask[indices]**2) / np.sum(mask**2)
     binary_mask = np.zeros_like(mask, dtype=np.bool)
