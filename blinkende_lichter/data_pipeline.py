@@ -1,6 +1,5 @@
 """ Schemas holding data from our pipeline (and the migration code). """
 import datajoint as dj
-from pipeline import reso, shared, experiment
 import numpy as np
 from scipy import misc, stats
 
@@ -23,6 +22,10 @@ class Scan(dj.Computed):
     -> shared.Channel
     -> Set
     """
+    try:
+        from pipeline import reso, shared, experiment
+    except Exception:
+        pass # do nothing
 
     @property
     def key_source(self):
