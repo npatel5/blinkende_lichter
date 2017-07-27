@@ -1,0 +1,31 @@
+services:
+  notebook_gpu0:
+    build: .
+    devices:
+    - /dev/nvidia0
+    - /dev/nvidiactl
+    - /dev/nvidia-uvm
+    - /dev/nvidia-uvm-tools
+    ports:
+    - 4440:8888
+    volumes:
+    - .:/notebooks
+    - .:/src/blinkende_lichter
+    - nvidia_driver_375.66:/usr/local/nvidia:ro
+  notebook_gpu1:
+    build: .
+    devices:
+    - /dev/nvidia1
+    - /dev/nvidiactl
+    - /dev/nvidia-uvm
+    - /dev/nvidia-uvm-tools
+    ports:
+    - 4441:8888
+    volumes:
+    - .:/notebooks
+    - .:/src/blinkende_lichter
+    - nvidia_driver_375.66:/usr/local/nvidia:ro
+version: '3'
+volumes:
+  nvidia_driver_375.66:
+    external: true

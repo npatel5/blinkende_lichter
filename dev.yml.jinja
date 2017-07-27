@@ -1,0 +1,13 @@
+version: '3'
+services:
+  {% for i in range(N_GPU) %}
+  notebook_gpu{{i}}:
+    build: .
+    ports:
+      - 444{{i}}:8888
+    devices:
+      - /dev/nvidia{{i}}
+    volumes:
+      - .:/notebooks
+      - .:/src/blinkende_lichter
+  {% endfor %}
