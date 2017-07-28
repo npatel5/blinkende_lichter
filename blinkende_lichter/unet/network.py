@@ -53,44 +53,35 @@ class UNet(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
 
-        self.dec1 = UNetDec(2, 64)
-        self.dec2 = UNetDec(64, 128, dropout=True)
+        self.dec1 = UNetDec(2, 16)
+        self.dec2 = UNetDec(16, 32, dropout=True)
         self.center = nn.Sequential(
-            nn.Conv2d(128, 256, 3),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, 3),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.ConvTranspose2d(256, 128, 2, stride=2),
-            nn.ReLU(inplace=True),
-        )
-        #self.enc4 = UNetEnc(1024, 512, 256)
-        #self.enc3 = UNetEnc(512, 256, 128)
-        self.enc2 = UNetEnc(256, 128, 64)
-        self.enc1 = nn.Sequential(
-            nn.Conv2d(128, 64, 3),
+            nn.Conv2d(32, 64, 3),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 64, 3),
             nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.ConvTranspose2d(64, 32, 2, stride=2),
+            nn.ReLU(inplace=True),
         )
-        self.final = nn.Conv2d(64, num_classes, 1)
+        self.enc2 = UNetEnc(64, 32, 16)
+        self.enc1 = nn.Sequential(
+            nn.Conv2d(32, 16, 3),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 16, 3),
+            nn.ReLU(inplace=True),
+        )
+        self.final = nn.Conv2d(16, num_classes, 1)
     
 
     def forward(self, x):
         dec1 = self.dec1(x)
         dec2 = self.dec2(dec1)
-        #dec3 = self.dec3(dec2)
-        #dec4 = self.dec4(dec3)
         center = self.center(dec2)
-        #enc4 = self.enc4(torch.cat([
-            #center, F.upsample_bilinear(dec4, center.size()[2:])], 1))
-        #enc3 = self.enc3(torch.cat([
-            #center, F.upsample_bilinear(dec3, center.size()[2:])], 1))
         enc2 = self.enc2(torch.cat([
             center, F.upsample_bilinear(dec2, center.size()[2:])], 1))
         enc1 = self.enc1(torch.cat([
             enc2, F.upsample_bilinear(dec1, enc2.size()[2:])], 1))
-
         return F.log_softmax(F.upsample_bilinear(self.final(enc1), x.size()[2:]))
 
 
